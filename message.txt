@@ -1,0 +1,6 @@
+hello
+hi
+how are you
+go is beautiful
+concurrency is awesome
+channel is great
