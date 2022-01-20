@@ -8,6 +8,7 @@ import (
 	"bufio"
 	"context"
 	"go-notifier/internal"
+	"log"
 	"os"
 	"os/signal"
 	"sync"
@@ -20,7 +21,10 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-const workerPoolSize = 5
+const (
+	workerPoolSize = 5     // default worker pool size
+	env            = "dev" // development or prod env
+)
 
 // rootCmd represents the base command when called without any subcommands
 var (
@@ -31,8 +35,8 @@ var (
 		Run:   runRootCmd,
 	}
 	rootArgs struct {
-		url      string
-		interval time.Duration
+		url      string        // url where notifcation to be sent
+		interval time.Duration // interval in which notifcation to be sent
 	}
 )
 
@@ -47,8 +51,9 @@ func Execute() {
 
 func init() {
 	root := rootCmd.Flags()
-	root.StringVarP(&rootArgs.url, "url", "u", "localhost:8080", "URL to which notification to be sent")
-	root.DurationVarP(&rootArgs.interval, "interval", "i", 1*time.Second, "Notification interval")
+	root.StringVarP(&rootArgs.url, "url", "u", "", "URL to which notification to be sent")
+	root.DurationVarP(&rootArgs.interval, "interval", "i", 100*time.Millisecond, "Notification interval")
+	cobra.MarkFlagRequired(root, "url")
 }
 
 func runRootCmd(cmd *cobra.Command, args []string) {
@@ -63,6 +68,7 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	notifier := internal.NewNotifier(l, rootArgs.url, rootArgs.interval, pChan, cChan)
 
 	// setup cancellation context and wait group
+	// root background with cancellation support
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := new(sync.WaitGroup)
 
@@ -71,46 +77,56 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 
 	// start workers and add worker pool
 	wg.Add(workerPoolSize)
-	for i := 0; i < workerPoolSize; i++ {
+	for i := 1; i <= workerPoolSize; i++ {
 		go notifier.Process(wg, i)
 	}
 
-	doneCh := make(chan os.Signal, 1)
-	signal.Notify(doneCh, syscall.SIGINT, syscall.SIGTERM)
+	// user input
 	go func() {
-		<-doneCh // block here
-		signal.Stop(doneCh)
-		l.Warn("CTRL-C received.Terminating......")
+		// new buffer io scanner to get user input
+		scanner := bufio.NewScanner(os.Stdin)
+		var msg string
+		for scanner.Scan() {
+			msg = scanner.Text()
+			pChan <- msg // send in data to producer channel
+			l.Debug(msg)
+		}
+		// bufio.Scanner has max buffer size 64*1024 bytes which means
+		// in case file has any line greater than the size of 64*1024,
+		// then it will throw error
+		// Note: buffer limit can be increased by using scanner.Buffer
+		// just for the simplicity bufio.Scanner default is used
+		if err := scanner.Err(); err != nil {
 
-		// handle shut down
-		cancel()   // cancel context
-		wg.Wait()  // wait for the workers to be completed
-		os.Exit(0) // Exit
+			l.Fatal("line length exceeded the bufio scanner max buffer size of 64*1024", zap.Error(err))
+		}
 	}()
 
-	scanner := bufio.NewScanner(os.Stdin)
-	var text string
-	for scanner.Scan() {
-		text = scanner.Text()
-		pChan <- text
-		l.Debug(text)
-	}
-	// bufio.Scanner has max buffer size 64*1024 bytes which means
-	// in case file has any line greater than the size of 64*1024,
-	// then it will throw error
-	if err := scanner.Err(); err != nil {
+	// handle manual interruption
+	doneCh := make(chan os.Signal, 1)
+	signal.Notify(doneCh, syscall.SIGINT, syscall.SIGTERM)
 
-		l.Fatal("line length exceeded the bufio scanner max buffer size of 64*1024", zap.Error(err))
-	}
+	<-doneCh // blocks here until interrupted
+
+	signal.Stop(doneCh)
+	l.Warn("CTRL-C received.Terminating......")
+
+	// handle shut down
+	cancel() // cancel context
+	// even if cancellation received, current running job will be not be interrupted until it completes
+	wg.Wait() // wait for the workers to be completed
+
 }
+
+// loggerSetup setup zap logger
 func loggerSetup() *zap.Logger {
-	//if cfg.Env == config.EnvProd {
-	//	logger, err := zap.NewProduction()
-	//	if err != nil {
-	//		log.Fatalf("failed to create zap logger : %v", err)
-	//	}
-	//	return logger
-	//}
+	if env == "prod" {
+		logger, err := zap.NewProduction()
+		if err != nil {
+			log.Fatalf("failed to create zap logger : %v", err)
+		}
+		return logger
+	}
 
 	// setup dev logger logger to show different colors
 	cfg := zap.NewDevelopmentEncoderConfig()
