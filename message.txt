@@ -1,6 +1,76 @@
-hello
-hi
-how are you
-go is beautiful
-concurrency is awesome
-channel is great
+Flashbots operates the Flashbots Protect RPC Endpoint: 
+
+- [https://rpc.flashbots.net/](https://rpc.flashbots.net/)
+- https://github.com/flashbots/rpc-endpoint
+
+The RPC Endpoint is a service written in Golang, which provides a JSON-RPC endpoint for users to point their wallets to (eg. MetaMask). 
+
+Requests are either forwarded to Infura ([https://infura.io/docs/ethereum/json-rpc](https://infura.io/docs/ethereum/json-rpc)) or to the Flashbots Relay for frontrunning protection.
+
+Currently the RPC endpoint operates on a single request-response basis. 
+
+JSON-RPC ([https://www.jsonrpc.org/specification](https://www.jsonrpc.org/specification)) allows for batch requests, which means that instead of sending a single requests, a list of requests is sent in one single HTTP request:
+
+```json
+// Request:
+[
+    {"jsonrpc":"2.0","method":"net_version","params":["latest", false],"id":"1"},
+    {"jsonrpc":"2.0","method":"net_version","params":["latest", false],"id":"2"}
+]
+
+// Response:
+[
+    {"jsonrpc": "2.0", "result": 1, "id": "1"},
+    {"jsonrpc": "2.0", "result": 1, "id": "2"}
+]
+```
+
+## Your goal
+
+Add support batch requests from the user to the RPC Endpoint 
+
+It will be a bit of a refactoring, because currently the codebase (in particular `request.go`) assumes a single request and single response (with various checks to ensure that a response header and body is only sent once). An important part of the task is extracting that logic into an architecture that can handle multiple requests nicely (as well as errors in individual requests).
+
+The codebase included several tests, both unit and e2e, which you might find useful and easy to extend.
+
+Start by setting up the project locally, running the tests (see the Makefile), and get an overview over the codebase. Please feel free to reach out with any questions and for more context as needed!
+
+To get started, the `net_version` JSON-RPC might be useful because it’s intercepted locally by the service, rather than sent to Infura. To test the proxying, you can sign up for a free Infura account and API key (`PROXY_URL`) here: [https://infura.io/register](https://infura.io/register)
+
+These requests should work eventually:
+
+```json
+// Intercepted single request:
+{"jsonrpc":"2.0","method":"net_version","params":["latest", false],"id":"1"},
+
+// Intercepted batch:
+[
+    {"jsonrpc":"2.0","method":"net_version","params":["latest", false],"id":"1"},
+    {"jsonrpc":"2.0","method":"net_version","params":["latest", false],"id":"2"}
+]
+
+// Proxied single request:
+{"jsonrpc":"2.0","method":"eth_blockNumber","params":["latest", false],"id":"1"},
+
+// Proxied batch:
+[
+    {"jsonrpc":"2.0","method":"eth_blockNumber","params":["latest", false],"id":"1"},
+    {"jsonrpc":"2.0","method":"eth_blockNumber","params":["latest", false],"id":"2"}
+]
+```
+
+**About errors:** 
+
+If any one request has an issue, Infura will return only a single error response for it. Example invalid batch call (2nd request has an invalid method):
+
+```json
+// Request:
+[
+    {"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":"1"},
+    {"jsonrpc":"2.0","method":"eth_blockNumberX","params":[],"id":"2"}
+]
+```
+
+**Additional Notes:**
+
+Maybe this Postman collection with ETH JSON-RPC calls will be helpful: [https://documenter.getpostman.com/view/4117254/ethereum-json-rpc/RVu7CT5J](https://documenter.getpostman.com/view/4117254/ethereum-json-rpc/RVu7CT5J)

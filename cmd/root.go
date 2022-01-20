@@ -7,13 +7,12 @@ package cmd
 import (
 	"bufio"
 	"context"
-	"fmt"
 	"go-notifier/internal"
-	"log"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/mattn/go-colorable"
 	"github.com/spf13/cobra"
@@ -33,7 +32,7 @@ var (
 	}
 	rootArgs struct {
 		url      string
-		interval int
+		interval time.Duration
 	}
 )
 
@@ -48,29 +47,26 @@ func Execute() {
 
 func init() {
 	root := rootCmd.Flags()
-	root.StringVar(&rootArgs.url, "url", "localhost:8080", "URL to which notification to be sent")
-	root.IntVar(&rootArgs.interval, "interval", 5, "Notification interval in seconds")
+	root.StringVarP(&rootArgs.url, "url", "u", "localhost:8080", "URL to which notification to be sent")
+	root.DurationVarP(&rootArgs.interval, "interval", "i", 1*time.Second, "Notification interval")
 }
 
 func runRootCmd(cmd *cobra.Command, args []string) {
 	// logger setup
 	l := loggerSetup()
+	// producer channel
+	pChan := make(chan string, 1)
 	// consumerChannel
-	c := make(chan string, 1)
-	// jobsChannel
-	j := make(chan string, workerPoolSize)
+	cChan := make(chan string, workerPoolSize)
 
 	// create notifier
-	notifier := internal.NewNotifier(l, rootArgs.url, c, j)
-
-	// create consumer
-	consumer := internal.NewConsumer(notifier.CallbackFunc)
+	notifier := internal.NewNotifier(l, rootArgs.url, rootArgs.interval, pChan, cChan)
 
 	// setup cancellation context and wait group
 	ctx, cancel := context.WithCancel(context.Background())
 	wg := new(sync.WaitGroup)
 
-	// start notifier and pass the cancellation
+	// start notifier and pass the cancellation ctx
 	go notifier.Start(ctx)
 
 	// start workers and add worker pool
@@ -84,7 +80,7 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	go func() {
 		<-doneCh // block here
 		signal.Stop(doneCh)
-		fmt.Println("CTRL-C received.Terminating...")
+		l.Warn("CTRL-C received.Terminating......")
 
 		// handle shut down
 		cancel()   // cancel context
@@ -96,14 +92,15 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	var text string
 	for scanner.Scan() {
 		text = scanner.Text()
-		consumer.Start(text)
-		fmt.Println(text)
+		pChan <- text
+		l.Debug(text)
 	}
 	// bufio.Scanner has max buffer size 64*1024 bytes which means
 	// in case file has any line greater than the size of 64*1024,
 	// then it will throw error
 	if err := scanner.Err(); err != nil {
-		log.Fatal(err)
+
+		l.Fatal("line length exceeded the bufio scanner max buffer size of 64*1024", zap.Error(err))
 	}
 }
 func loggerSetup() *zap.Logger {
@@ -114,13 +111,15 @@ func loggerSetup() *zap.Logger {
 	//	}
 	//	return logger
 	//}
-	aa := zap.NewDevelopmentEncoderConfig()
-	aa.EncodeLevel = zapcore.CapitalColorLevelEncoder
-	bb := zap.New(zapcore.NewCore(
-		zapcore.NewConsoleEncoder(aa),
+
+	// setup dev logger logger to show different colors
+	cfg := zap.NewDevelopmentEncoderConfig()
+	cfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
+	log := zap.New(zapcore.NewCore(
+		zapcore.NewConsoleEncoder(cfg),
 		zapcore.AddSync(colorable.NewColorableStdout()),
-		zapcore.DebugLevel,
+		zapcore.InfoLevel,
 	))
-	bb.Warn("logger setup done")
-	return bb
+	log.Info("logger setup done")
+	return log
 }
