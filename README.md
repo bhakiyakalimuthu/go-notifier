@@ -4,7 +4,7 @@
 >*   CLI contains a library that implements an HTTP notification client.A client is configured with a URL to which notifications are sent.It implements a function that takes messages and notifies about them by sending HTTP POST requests to the configured URL with the message content in the request body.
 client operations are non-blocking for the caller. It handles notification failures.
 
-###Supported operation
+### Supported operation
 ```
 Usage:
   notifier [flags]
@@ -15,7 +15,7 @@ Flags:
   -u, --url string          URL to which notification to be sent 
   ```
 
-###Architecture diagram
+### Architecture diagram
 ![plot](picture/Architecture_diagram.png)
 
 
