@@ -1,6 +1,7 @@
 /*
 Copyright © 2022
-<Bhakiyaraj Kalimuthu>
+Author Bhakiyaraj Kalimuthu
+Email bhakiya.kalimuthu@gmail.com
 */
 package cmd
 
@@ -35,8 +36,8 @@ var (
 		Run:   runRootCmd,
 	}
 	rootArgs struct {
-		url      string        // url where notifcation to be sent
-		interval time.Duration // interval in which notifcation to be sent
+		url      string        // url where notification to be sent
+		interval time.Duration // interval in which notification to be sent
 	}
 )
 
@@ -59,13 +60,17 @@ func init() {
 func runRootCmd(cmd *cobra.Command, args []string) {
 	// logger setup
 	l := loggerSetup()
+
 	// producer channel
 	pChan := make(chan string, 1)
-	// consumerChannel
+	// consumer channel
 	cChan := make(chan string, workerPoolSize)
 
+	// create http client
+	httpClient := internal.NewHttpClient(l, rootArgs.url)
+
 	// create notifier
-	notifier := internal.NewNotifier(l, rootArgs.url, rootArgs.interval, pChan, cChan)
+	notifier := internal.NewNotifier(l, httpClient, rootArgs.interval, pChan, cChan)
 
 	// setup cancellation context and wait group
 	// root background with cancellation support
@@ -125,10 +130,11 @@ func loggerSetup() *zap.Logger {
 		if err != nil {
 			log.Fatalf("failed to create zap logger : %v", err)
 		}
+		logger.Info("logger setup done")
 		return logger
 	}
 
-	// setup dev logger logger to show different colors
+	// setup dev logger to show different colors
 	cfg := zap.NewDevelopmentEncoderConfig()
 	cfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
 	log := zap.New(zapcore.NewCore(

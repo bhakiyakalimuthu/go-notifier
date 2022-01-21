@@ -1,9 +1,13 @@
+/*
+Copyright © 2022
+Author Bhakiyaraj Kalimuthu
+Email bhakiya.kalimuthu@gmail.com
+*/
+
 package internal
 
 import (
-	"bytes"
 	"context"
-	"net/http"
 	"sync"
 	"time"
 
@@ -19,23 +23,21 @@ type Notifier interface {
 // notifier type
 type notifier struct {
 	logger       *zap.Logger   // logger
-	url          string        // url where notification to be sent
+	httpClient   HttpClient    // http client for sending notification
 	interval     time.Duration // interval in which notification to be sent
 	producerChan chan string   // channel to receive from stdio
 	consumerChan chan string   // chanel to consume the data
-	httpClient   *http.Client  // http client for sending notification
+
 }
 
 // NewNotifier constructor
-func NewNotifier(logger *zap.Logger, url string, interval time.Duration, producerChan, consumerChan chan string) Notifier {
-	client := &http.Client{Timeout: time.Second * 5} // default timeout set to 5s
+func NewNotifier(logger *zap.Logger, httpClient HttpClient, interval time.Duration, producerChan, consumerChan chan string) Notifier {
 	return &notifier{
 		logger:       logger,
-		url:          url,
 		interval:     interval,
 		producerChan: producerChan,
 		consumerChan: consumerChan,
-		httpClient:   client,
+		httpClient:   httpClient,
 	}
 }
 
@@ -45,7 +47,7 @@ func (n *notifier) Process(wg *sync.WaitGroup, workerID int) {
 	for job := range n.consumerChan {
 		<-time.After(n.interval) // wait for the provided interval
 		n.logger.Debug("starting job", zap.Int("workerID", workerID))
-		n.notify(job) // call http client to make notification
+		n.httpClient.Notify(job) // call http client to make notification
 	}
 	n.logger.Warn("gracefully finishing job", zap.Int("workerID", workerID))
 }
@@ -63,22 +65,4 @@ func (n *notifier) Start(ctx context.Context) {
 			return
 		}
 	}
-}
-
-// notify using http client to make http post request
-func (n *notifier) notify(msg string) {
-	n.logger.Debug("making http request", zap.String("msg", msg))
-	// create http request
-	req, err := http.NewRequest(http.MethodPost, n.url, bytes.NewBuffer([]byte(msg)))
-	if err != nil {
-		n.logger.Error("failed to make new request", zap.Error(err))
-		return
-	}
-	_, err = n.httpClient.Do(req)
-	if err != nil {
-		n.logger.Error("failed to make new request", zap.Error(err))
-		return
-	}
-	n.logger.Info("successfully notified the message", zap.String("msg", msg))
-
 }
