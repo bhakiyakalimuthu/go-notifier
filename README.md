@@ -41,10 +41,18 @@ Flags:
 # How to run build
     make build
 
-# How to start the app
+# How to start the cli
 - **1.start using go build (Without go install)**
 ![plot](picture/go-build.png)
 - **2.start using go install (go path is configured properly)**
 ![plot](picture/go-install.png)
 
+# How to exit the cli
+    press ctrl+c or program will auto exit when input data is fully notified
+
+# test cover and race
+```
+➜  internal git:(main) ✗ go test -race -cover .
+ok      go-notifier/internal    (cached)        coverage: 55.2% of statement
+```
 >Note: testdata folder contains  different text file which can be used for testing

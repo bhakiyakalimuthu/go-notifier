@@ -8,8 +8,10 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"go-notifier/internal"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
 	"sync"
@@ -24,7 +26,7 @@ import (
 
 const (
 	workerPoolSize = 5     // default worker pool size
-	env            = "dev" // development or prod env
+	env            = "dev" // development or production env
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -58,6 +60,10 @@ func init() {
 }
 
 func runRootCmd(cmd *cobra.Command, args []string) {
+
+	// validate url and fail early
+	isValidURL(cmd, rootArgs.url)
+
 	// logger setup
 	l := loggerSetup()
 
@@ -87,7 +93,7 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	}
 
 	// user input
-	go func() {
+	go func(cancelFunc context.CancelFunc) {
 		// new buffer io scanner to get user input
 		scanner := bufio.NewScanner(os.Stdin)
 		var msg string
@@ -105,7 +111,14 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 
 			l.Fatal("line length exceeded the bufio scanner max buffer size of 64*1024", zap.Error(err))
 		}
-	}()
+		// once file read is completed, call context cancel to finish the job
+		cancelFunc()
+
+		<-time.Tick(time.Second * 10) // wait for all the workers to finish up
+
+		l.Warn("file read is completed,exiting......")
+		os.Exit(0) // exit the program
+	}(cancel)
 
 	// handle manual interruption
 	doneCh := make(chan os.Signal, 1)
@@ -120,7 +133,7 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	cancel() // cancel context
 	// even if cancellation received, current running job will be not be interrupted until it completes
 	wg.Wait() // wait for the workers to be completed
-
+	l.Warn("All jobs are done, shutting down")
 }
 
 // loggerSetup setup zap logger
@@ -144,4 +157,20 @@ func loggerSetup() *zap.Logger {
 	))
 	log.Info("logger setup done")
 	return log
+}
+
+func isValidURL(cmd *cobra.Command, URL string) {
+	if rootArgs.url == "" {
+		fmt.Println("Error: url field is empty")
+		cmd.Help()
+		os.Exit(1)
+	}
+
+	// parse url if valid
+	_, err := url.ParseRequestURI(URL)
+	if err != nil {
+		fmt.Printf("Error: invalid url %v", err)
+		cmd.Help()
+		os.Exit(1)
+	}
 }

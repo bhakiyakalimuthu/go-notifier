@@ -1,4 +1,4 @@
-.PHONY: build clean test lint mod vendor
+.PHONY: build clean test lint fmt vet static_check mod vendor
 
 ROOT_DIR=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 GO_MAIN_SRC?=$(ROOT_DIR)
@@ -16,9 +16,13 @@ mod:
 vendor:
 	$(GO_CMD) mod vendor
 
-lint:
-	gofmt -d ./
-	go vet ./...
+lint: fmt vet static_check
+
+fmt:
+	find . -path '*/vendor/*' -prune -o -name '*.go' -type f -exec gofmt -s -w {} \;
+vet:
+	go list ./... | grep -v vendor | xargs go vet -v
+static_check:
 	staticcheck ./...
 
 test:
