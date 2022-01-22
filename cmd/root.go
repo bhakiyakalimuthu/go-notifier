@@ -60,12 +60,16 @@ func init() {
 }
 
 func runRootCmd(cmd *cobra.Command, args []string) {
-
-	// validate url and fail early
-	isValidURL(cmd, rootArgs.url)
-
 	// logger setup
 	l := loggerSetup()
+
+	//startedAt := time.Now()
+	//defer func() {
+	//	endedAt := time.Since(startedAt)
+	//	fmt.Printf("execution completed in %v seconds", endedAt.Seconds())
+	//}()
+	// validate url and fail early
+	isValidURL(cmd, rootArgs.url)
 
 	// producer channel
 	pChan := make(chan string, 1)

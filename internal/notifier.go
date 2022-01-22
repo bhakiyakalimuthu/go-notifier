@@ -52,7 +52,7 @@ func (n *notifier) Process(wg *sync.WaitGroup, workerID int) {
 	n.logger.Warn("gracefully finishing job", zap.Int("workerID", workerID))
 }
 
-// Start acts as a proxy between producer and consumer channel,also supports the gracefull cancellation
+// Start acts as a proxy between producer and consumer channel,also supports the graceful cancellation
 func (n *notifier) Start(ctx context.Context) {
 	for {
 		select {
