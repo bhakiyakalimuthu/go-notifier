@@ -63,13 +63,17 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	// logger setup
 	l := loggerSetup()
 
-	//startedAt := time.Now()
-	//defer func() {
-	//	endedAt := time.Since(startedAt)
-	//	fmt.Printf("execution completed in %v seconds", endedAt.Seconds())
-	//}()
+	// init clock
+	clock := internal.NewClock()
+	defer func() {
+		l.Info("Time taken to complete", zap.Duration("time_taken", <-clock.Since()))
+	}()
+
 	// validate url and fail early
-	isValidURL(cmd, rootArgs.url)
+	if !isValidURL(rootArgs.url) {
+		cmd.Help()
+		os.Exit(1)
+	}
 
 	// producer channel
 	pChan := make(chan string, 1)
@@ -96,8 +100,10 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 		go notifier.Process(wg, i)
 	}
 
+	doneCh := make(chan os.Signal, 1)
+
 	// user input
-	go func(cancelFunc context.CancelFunc) {
+	go func(cancelFunc context.CancelFunc, doneCh chan os.Signal) {
 		// new buffer io scanner to get user input
 		scanner := bufio.NewScanner(os.Stdin)
 		var msg string
@@ -116,16 +122,18 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 			l.Fatal("line length exceeded the bufio scanner max buffer size of 64*1024", zap.Error(err))
 		}
 		// once file read is completed, call context cancel to finish the job
-		cancelFunc()
+		//cancelFunc()
 
-		<-time.Tick(time.Second * 10) // wait for all the workers to finish up
+		<-time.Tick(time.Second * 1) // wait for all the workers to finish up
 
 		l.Warn("file read is completed,exiting......")
-		os.Exit(0) // exit the program
-	}(cancel)
+		//os.Exit(0) // exit the program
+		var sig syscall.Signal
+		sig = 1
+		doneCh <- sig
+	}(cancel, doneCh)
 
 	// handle manual interruption
-	doneCh := make(chan os.Signal, 1)
 	signal.Notify(doneCh, syscall.SIGINT, syscall.SIGTERM)
 
 	<-doneCh // blocks here until interrupted
@@ -138,6 +146,7 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	// even if cancellation received, current running job will be not be interrupted until it completes
 	wg.Wait() // wait for the workers to be completed
 	l.Warn("All jobs are done, shutting down")
+
 }
 
 // loggerSetup setup zap logger
@@ -163,18 +172,17 @@ func loggerSetup() *zap.Logger {
 	return log
 }
 
-func isValidURL(cmd *cobra.Command, URL string) {
+func isValidURL(URL string) bool {
 	if rootArgs.url == "" {
 		fmt.Println("Error: url field is empty")
-		cmd.Help()
-		os.Exit(1)
+		return false
 	}
 
 	// parse url if valid
 	_, err := url.ParseRequestURI(URL)
 	if err != nil {
 		fmt.Printf("Error: invalid url %v", err)
-		cmd.Help()
-		os.Exit(1)
+		return false
 	}
+	return true
 }
