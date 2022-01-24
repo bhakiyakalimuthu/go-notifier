@@ -126,20 +126,20 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 
 		<-time.Tick(time.Second * 1) // wait for all the workers to finish up
 
-		l.Warn("file read is completed,exiting......")
-		//os.Exit(0) // exit the program
-		var sig syscall.Signal
-		sig = 1
-		doneCh <- sig
+		// exit the program
+		doneCh <- syscall.SIGQUIT
 	}(cancel, doneCh)
 
 	// handle manual interruption
 	signal.Notify(doneCh, syscall.SIGINT, syscall.SIGTERM)
 
-	<-doneCh // blocks here until interrupted
-
+	switch <-doneCh { // blocks here until interrupted
+	case syscall.SIGINT, syscall.SIGTERM:
+		l.Warn("CTRL-C received.Terminating......")
+	default:
+		l.Warn("file read is completed,exiting......")
+	}
 	signal.Stop(doneCh)
-	l.Warn("CTRL-C received.Terminating......")
 
 	// handle shut down
 	cancel() // cancel context
