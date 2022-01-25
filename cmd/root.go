@@ -121,11 +121,9 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 
 			l.Fatal("line length exceeded the bufio scanner max buffer size of 64*1024", zap.Error(err))
 		}
-		// once file read is completed, call context cancel to finish the job
-		//cancelFunc()
 
 		<-time.Tick(time.Second * 1) // wait for all the workers to finish up
-
+		// once file read is completed, send quit system call
 		// exit the program
 		doneCh <- syscall.SIGQUIT
 	}(cancel, doneCh)
