@@ -1,4 +1,4 @@
-.PHONY: build clean test lint fmt vet static_check mod vendor
+.PHONY: mod vendor lint fmt vet static_check test build clean
 
 ROOT_DIR=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 GO_MAIN_SRC?=$(ROOT_DIR)
