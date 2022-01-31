@@ -120,6 +120,7 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 		if err := scanner.Err(); err != nil {
 
 			l.Fatal("line length exceeded the bufio scanner max buffer size of 64*1024", zap.Error(err))
+			os.Exit(1)
 		}
 
 		<-time.Tick(time.Second * 1) // wait for all the workers to finish up
